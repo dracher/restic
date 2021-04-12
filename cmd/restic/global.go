@@ -48,20 +48,21 @@ type backendWrapper func(r restic.Backend) (restic.Backend, error)
 
 // GlobalOptions hold all global options for restic.
 type GlobalOptions struct {
-	Repo            string
-	RepositoryFile  string
-	PasswordFile    string
-	PasswordCommand string
-	KeyHint         string
-	Quiet           bool
-	Verbose         int
-	NoLock          bool
-	JSON            bool
-	CacheDir        string
-	NoCache         bool
-	CACerts         []string
-	TLSClientCert   string
-	CleanupCache    bool
+	Repo              string
+	RepositoryFile    string
+	RepositoryCommand string
+	PasswordFile      string
+	PasswordCommand   string
+	KeyHint           string
+	Quiet             bool
+	Verbose           int
+	NoLock            bool
+	JSON              bool
+	CacheDir          string
+	NoCache           bool
+	CACerts           []string
+	TLSClientCert     string
+	CleanupCache      bool
 
 	LimitUploadKb   int
 	LimitDownloadKb int
@@ -103,6 +104,7 @@ func init() {
 	f := cmdRoot.PersistentFlags()
 	f.StringVarP(&globalOptions.Repo, "repo", "r", os.Getenv("RESTIC_REPOSITORY"), "`repository` to backup to or restore from (default: $RESTIC_REPOSITORY)")
 	f.StringVarP(&globalOptions.RepositoryFile, "repository-file", "", os.Getenv("RESTIC_REPOSITORY_FILE"), "`file` to read the repository location from (default: $RESTIC_REPOSITORY_FILE)")
+	f.StringVarP(&globalOptions.RepositoryCommand, "repository-command", "", os.Getenv("RESTIC_REPOSITORY_CMD"), "shell `command` to obtain the repository location from (default: $RESTIC_REPOSITORY_CMD)")
 	f.StringVarP(&globalOptions.PasswordFile, "password-file", "p", os.Getenv("RESTIC_PASSWORD_FILE"), "`file` to read the repository password from (default: $RESTIC_PASSWORD_FILE)")
 	f.StringVarP(&globalOptions.KeyHint, "key-hint", "", os.Getenv("RESTIC_KEY_HINT"), "`key` ID of key to try decrypting first (default: $RESTIC_KEY_HINT)")
 	f.StringVarP(&globalOptions.PasswordCommand, "password-command", "", os.Getenv("RESTIC_PASSWORD_COMMAND"), "shell `command` to obtain the repository password from (default: $RESTIC_PASSWORD_COMMAND)")
@@ -392,8 +394,8 @@ func ReadPasswordTwice(gopts GlobalOptions, prompt1, prompt2 string) (string, er
 }
 
 func ReadRepo(opts GlobalOptions) (string, error) {
-	if opts.Repo == "" && opts.RepositoryFile == "" {
-		return "", errors.Fatal("Please specify repository location (-r or --repository-file)")
+	if opts.Repo == "" && opts.RepositoryFile == "" && opts.RepositoryCommand == "" {
+		return "", errors.Fatal("Please specify repository location (-r or --repository-file or --repository-command)")
 	}
 
 	repo := opts.Repo
@@ -411,6 +413,24 @@ func ReadRepo(opts GlobalOptions) (string, error) {
 		}
 
 		repo = strings.TrimSpace(string(s))
+	}
+
+	if opts.RepositoryCommand != "" {
+		if repo != "" {
+			return "", errors.Fatal("Options -r and --repository-command are mutually exclusive, please specify only one")
+		}
+
+		args, err := backend.SplitShellStrings(opts.RepositoryCommand)
+		if err != nil {
+			return "", err
+		}
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stderr = os.Stderr
+		output, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+		return (strings.TrimSpace(string(output))), nil
 	}
 
 	return repo, nil
